@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 
 import '../../model/deal_model.dart';
@@ -13,24 +15,51 @@ class SearchDealsController extends GetxController {
   final isLoading = false.obs;
   final hasSearched = false.obs;
 
+  //variable private
+  Timer? _debounceTimer;
+  int _activeSearchId = 0;
+
   void onQueryChanged(String query) {
-    _search(query);
+    _debounceTimer?.cancel();
+    if (query.trim().isEmpty) {
+      _activeSearchId++;
+      results.clear();
+      hasSearched.value = false;
+      isLoading.value = false;
+      return;
+    }
+
+    // Debounce 300ms
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _search(query);
+    });
   }
 
   Future<void> _search(String query) async {
-    if (query.trim().isEmpty) {
-      results.clear();
-      hasSearched.value = false;
-      return;
-    }
+    final searchId = ++_activeSearchId;
     isLoading.value = true;
     hasSearched.value = true;
+
     try {
       final found = await dealRepo.search(query);
-      results.assignAll(found);
+      // recheck response last search
+      if (searchId == _activeSearchId) {
+        results.assignAll(found);
+      }
     } catch (e) {
-      LogService.error('search failed', e);
+      if (searchId == _activeSearchId) {
+        LogService.error('search failed', e);
+      }
+    } finally {
+      if (searchId == _activeSearchId) {
+        isLoading.value = false;
+      }
     }
-    isLoading.value = false;
+  }
+
+  @override
+  void onClose() {
+    _debounceTimer?.cancel();
+    super.onClose();
   }
 }
