@@ -29,8 +29,8 @@ class SearchDealsController extends GetxController {
       return;
     }
 
-    // Debounce 300ms
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+    // Debounce 500ms (0.5s for natural mobile typing cadence)
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
       _search(query);
     });
   }
