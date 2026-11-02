@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+// [F-1] Import live countdown badge
+import 'package:rescu/feature/shared_widget/flash_countdown_badge.dart';
 
 import '../../app_config.dart';
 import '../shared_widget/the_network_image.dart';
@@ -33,17 +35,17 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
                           fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(deal.storeName,
-                      style: TextStyle(
-                          fontSize: 15, color: Colors.grey.shade700)),
+                      style:
+                          TextStyle(fontSize: 15, color: Colors.grey.shade700)),
                   Text(deal.storeAddress,
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade500)),
+                      style:
+                          TextStyle(fontSize: 13, color: Colors.grey.shade500)),
                   const SizedBox(height: 16),
                   Row(
                     children: [
                       Text('฿${deal.price.toStringAsFixed(0)}',
                           style: const TextStyle(
-                              fontSize: 24,
+                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                               color: AppConfig.primaryGreen)),
                       const SizedBox(width: 8),
@@ -53,10 +55,21 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
                               color: Colors.grey.shade500,
                               decoration: TextDecoration.lineThrough)),
                       const Spacer(),
+
+                      // [F-1] Live countdown badge on details screen
+                      if (deal.isFlashSale && deal.flashSaleEndsAt != null) ...[
+                        FlashCountdownBadge(
+                          endsAt: deal.flashSaleEndsAt!,
+                          onExpired: () => controller.isExpired.value = true,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+
                       Obx(() => Chip(
                             avatar: const Icon(Icons.inventory_2_outlined,
                                 size: 16),
-                            label: Text('${controller.quantityLeft ?? '-'} left'),
+                            label:
+                                Text('${controller.quantityLeft ?? '-'} left'),
                           )),
                     ],
                   ),
@@ -98,8 +111,8 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
                   ),
                   const SizedBox(height: 16),
                   const Text('What you get',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600)),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   Text(deal.description,
                       style: TextStyle(
@@ -130,11 +143,16 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
         color: Colors.white,
         child: SizedBox(
           width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: controller.addToCart,
-            icon: const Icon(Icons.add_shopping_cart),
-            label: const Text('Add to bag'),
-          ),
+          // [F-1] Obx listens to controller.isExpired to disable the button when countdown reaches zero
+          child: Obx(() {
+            final isExpired = controller.isExpired.value;
+            return FilledButton.icon(
+              // When isExpired is true, onPressed becomes null (disables button)
+              onPressed: isExpired ? null : controller.addToCart,
+              icon: Icon(isExpired ? Icons.timer_off : Icons.add_shopping_cart),
+              label: Text(isExpired ? 'Deal expired' : 'Add to bag'),
+            );
+          }),
         ),
       ),
     );

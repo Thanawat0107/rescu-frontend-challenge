@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:rescu/service/countdown_service.dart';
 
 import 'app_config.dart';
 import 'repository/deal_repo.dart';
@@ -20,6 +21,7 @@ Future<void> initDependencies() async {
   await Get.putAsync(() => FakeApiService().init(), permanent: true);
   Get.put(AnalyticsService(), permanent: true);
   Get.put(CartService(), permanent: true);
+  Get.put(CountdownService(), permanent: true);
   Get.lazyPut(() => DealRepo(api: Get.find()), fenix: true);
   Get.lazyPut(() => StoreRepo(api: Get.find()), fenix: true);
   Get.lazyPut(() => OrderRepo(api: Get.find()), fenix: true);

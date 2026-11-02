@@ -11,6 +11,9 @@ class DealDetailsController extends GetxController {
   final CartService cartService;
   final AnalyticsService analytics;
 
+  // [F-1] Track whether this deal has expired
+  final isExpired = false.obs;
+
   DealDetailsController({
     required this.dealRepo,
     required this.cartService,
@@ -27,10 +30,17 @@ class DealDetailsController extends GetxController {
     super.onInit();
     deal = Get.arguments as DealModel;
     _quantityLeft.value = deal.quantityLeft;
+
+    // [F-1] Check if already expired upon entering the screen
+    if (deal.isFlashSale && deal.flashSaleEndsAt != null) {
+      isExpired.value = deal.flashSaleEndsAt!.isBefore(DateTime.now());
+    }
+
     analytics.logEvent('deal_details_view', {
       'deal_id': deal.id,
       'source': Get.parameters['source'] ?? 'unknown',
     });
+
     // Whenever the cart changes, re-check this deal's remaining stock so the
     // details screen never shows stale availability.
     ever(cartService.itemCount, (_) => _recheckAvailability());
@@ -43,6 +53,16 @@ class DealDetailsController extends GetxController {
   }
 
   void addToCart() {
+    // [F-1] Guard check: prevent adding expired flash deals to cart
+    if (isExpired.value) {
+      Get.snackbar(
+        'Deal expired',
+        'This flash sale has ended and can no longer be ordered.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
     cartService.add(deal);
     Get.snackbar(
       'Added to bag',
