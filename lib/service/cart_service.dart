@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 // [F-1] Import CountdownService to listen for clock ticks
 import 'package:rescu/service/countdown_service.dart';
@@ -26,7 +27,7 @@ class CartService extends GetxService {
   void _reconcileExpiredFlashDeals(DateTime now) {
     if (items.isEmpty) return;
 
-    // Find any items in the bag whose flash sale countdown has reached zero
+    // ค้นหาสินค้าแฟลชเซลล์ที่หมดเวลาแล้วทั้งหมด
     final expiredItems = items
         .where((item) =>
             item.deal.isFlashSale &&
@@ -34,17 +35,31 @@ class CartService extends GetxService {
             item.deal.flashSaleEndsAt!.isBefore(now))
         .toList();
 
-    for (final item in expiredItems) {
-      remove(item.deal.id); // Removes from cart and auto-recounts total
+    if (expiredItems.isEmpty) return;
 
-      // Show visible notice to user if UI overlay context is available
+    // 1. นำรายการที่หมดอายุออกจากตะกร้าแบบ Batch ทีเดียว ไม่วนลูปสั่ง remove ทีละตัวเพื่อกัน UI กระพริบ
+    final expiredIds = expiredItems.map((e) => e.deal.id).toSet();
+    items.removeWhere((item) => expiredIds.contains(item.deal.id));
+    _recount();
+
+    // 2. แสดงแจ้งเตือน Snackbar อย่างปลอดภัยผ่าน microtask หลัง frame ปัจจุบันวาดเสร็จ
+    for (final item in expiredItems) {
+      LogService.log('cart: auto-removed expired deal "${item.deal.name}"');
+
       if (Get.context != null) {
-        Get.snackbar(
-          'Flash Sale Ended',
-          '${item.deal.name} has expired and was removed from your bag.',
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 3),
-        );
+        Future.microtask(() {
+          if (Get.isSnackbarOpen != true) {
+            Get.rawSnackbar(
+              title: 'Flash Sale Ended',
+              message:
+                  '${item.deal.name} has expired and was removed from your bag.',
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 4),
+              margin: const EdgeInsets.all(12),
+              borderRadius: 8,
+            );
+          }
+        });
       }
     }
   }

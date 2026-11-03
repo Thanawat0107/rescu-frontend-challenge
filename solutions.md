@@ -49,9 +49,10 @@ To avoid the junior pitfall of spawning 100+ uncoordinated timers on the event l
 4. **Deal Details Enforcement (`DealDetailsController` & `DealDetailsScreen`):**
    - The details screen displays `FlashCountdownBadge` next to the remaining quantity.
    - The "Add to bag" button dynamically switches to `onPressed: null` (disabled grey state in Material 3) with a "Deal expired" label when expired, accompanied by a guard check in `addToCart()`.
-5. **Cart Reconciliation (`CartService`):**
+5. **Cart Reconciliation & Batch Eviction (`CartService`):**
    - `CartService` listens to `CountdownService.now` via `ever()`.
-   - Whenever an item in the cart expires, it is automatically removed from `items`, recalculating the total and displaying a visible notification (`Get.snackbar('Flash Sale Ended', ...)`). An additional guard check in `CartService.add` prevents adding already-expired deals.
+   - Whenever an item in the cart expires, it is removed using **atomic batch removal** (`items.removeWhere` over a `Set<int>` of expired IDs followed by a single `_recount()`). This eliminates the rapid 2–3 second UI rebuild storm (flicker) that occurred when calling `remove()` iteratively per item.
+   - User notifications are dispatched reliably via `Get.rawSnackbar` scheduled on a `Future.microtask`, ensuring the snackbar overlay is mounted cleanly after the current render frame completes and guarded with `if (Get.isSnackbarOpen != true)` against concurrent duplicates. An additional guard check in `CartService.add` prevents adding already-expired deals.
 
 #### 3. Alternatives Considered & Rejected
 - **Per-Card Timers (`Timer.periodic` inside each card widget):** Rejected because having 100+ cards run independent timers causes significant battery/CPU consumption, out-of-phase timer jitter (badges ticking at different microsecond offsets), and risk of lifecycle memory leaks if cards are recycled without proper disposal.
@@ -124,9 +125,14 @@ To avoid the junior pitfall of spawning 100+ uncoordinated timers on the event l
 - **How I caught it:** Caught immediately during static analysis. `DateTime.now()` and `.obs` reactive wrappers are runtime evaluations, not compile-time constants.
 - **What I did instead:** I removed the `const` modifier from the `DealCard` constructor to permit runtime initialization while retaining `const` on all immutable internal subtrees (e.g. `const EdgeInsets`, `const SizedBox`) to maintain Flutter render tree optimization.
 
----
+#### Example 7: Naive Iterative Item Eviction Causing UI Flickering and Swallowed Snackbars
+- **What AI / Initial Implementation did:** When flash sales expired, the AI wrote a straightforward loop `for (final item in expiredItems) { remove(item.deal.id); Get.snackbar(...); }` inside `CartService._reconcileExpiredFlashDeals`.
+- **How I caught it:** During real manual testing on the Android emulator with deals hitting `00:00`, the cart screen and feed underwent an aggressive 2–3 second visual flickering loop, and the `Get.snackbar` notification failed to render altogether. Each call to `remove()` triggered independent list modifications and `_recount()` state dispatches while the Flutter render pipeline was mid-frame. Concurrently, calling `Get.snackbar` immediately during state mutation conflicted with GetX's overlay manager, swallowing the notification.
+- **What I did instead:** 
+  1. I refactored the eviction into an **atomic batch operation**: gathered expired deal IDs into a `Set<int>`, performed a single `items.removeWhere(...)`, and called `_recount()` once, reducing rebuild events from $O(N)$ to $O(1)$ and immediately stopping the UI flicker.
+  2. I wrapped notification delivery in `Future.microtask(...)` using `Get.rawSnackbar` guarded by `if (Get.isSnackbarOpen != true)`, ensuring notifications are posted to the event loop safely after frame rendering completes.
 
-## 3. Design Questions
+---
 
 ### Q1: GetxController lifecycle vs. Widget State lifecycle
 A `GetxController`'s lifecycle is bound to **Business Logic and Routing/DI scope** (`onInit` when injected, `onReady` when route transition completes, and `onClose` when discarded from memory), whereas a `StatefulWidget`'s `State` lifecycle is tied directly to the **Flutter Element Tree and Render Pipeline** (`initState`, `didUpdateWidget`, and `dispose` when unmounted from the widget tree). Confusion between the two causes severe bugs when persistent services outlive ephemeral UI widgets: in **[RES-103]**, `DealDetailsController` attached an anonymous `ever()` listener to a permanent singleton (`CartService`). Because the route-level controller's worker was never explicitly disposed in `onClose()`, the singleton retained references to the dead controller's closure forever, triggering a burst of stale network calls whenever the cart changed. Similarly in **[RES-102]**, a periodic timer inside a widget state called `setState()` after the widget had unmounted because it violated the `State` disposal boundary.
